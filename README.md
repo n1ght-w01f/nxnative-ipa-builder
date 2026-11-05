@@ -60,23 +60,23 @@ El workflow descarga tus archivos por `curl -L` desde una URL. Necesitas
 ## 🧩 ¿Y si el artefacto viene dividido en varios `.zip`?
 
 Cuando el juego ocupa **más de 2 GB**, el workflow lo trocea en volúmenes ZIP
-de 2000 MB: `mario-odyssey_split.zip`, `mario-odyssey_split.z01`,
+de 2000 MB: `mario-odyssey_parts.zip`, `mario-odyssey_parts.z01`,
 `.z02`, ... Para **unirlos** y recuperar la IPA:
 
 **Windows (con 7-Zip — más fácil):**
 1. Descarga **todas** las partes en la misma carpeta.
-2. Clic derecho sobre `mario-odyssey_split.zip` → *7-Zip → Extraer en...*
+2. Clic derecho sobre `mario-odyssey_parts.zip` → *7-Zip → Extraer en...*
    (7-Zip entiende los volúmenes automáticamente).
 
 **Windows (símbolo del sistema, sin 7-Zip):**
 ```bat
-copy /b mario-odyssey_split.z01+mario-odyssey_split.z02+...+mario-odyssey_split.zip mario-odyssey_joined.zip
+copy /b mario-odyssey_parts.z01+mario-odyssey_parts.z02+...+mario-odyssey_parts.zip mario-odyssey_joined.zip
 ```
-*(los volúmenes `.z01`, `.z02`... en orden, añadiendo el `.zip` el último; con `${game_name}_split.` enteros)*
+*(los volúmenes `.z01`, `.z02`... en orden, añadiendo el `.zip` el último)*
 
 **macOS / Linux:**
 ```bash
-zip -s 0 mario-odyssey_split.zip --out mario-odyssey_full.zip
+zip -s 0 mario-odyssey_parts.zip --out mario-odyssey_full.zip
 unzip mario-odyssey_full.zip
 ```
 

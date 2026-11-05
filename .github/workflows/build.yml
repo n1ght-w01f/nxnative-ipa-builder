@@ -185,13 +185,14 @@ jobs:
             if [ "$SIZE" -gt "$MAX" ]; then
               echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 2000 MB ..."
               cd "$STAGE"
-              mv "$IPA" "$(basename "$IPA")"
               IPA_NAME="$(basename "$IPA")"
+              BASE="${IPA_NAME%.ipa}"
+              mv "$IPA" "$IPA_NAME"
               # 1) comprimir la IPA, 2) dividir en volúmenes de 2000 MB
-              zip -q -r "${IPA_NAME}.zip" "$IPA_NAME"
-              zip -q -s 2000m "${IPA_NAME}.zip" --out "${GAME}_split.zip"
-              rm "${IPA_NAME}" "${IPA_NAME}.zip"
-              echo "[✔] Partes generadas: $(ls "${GAME}_split".zip* | tr '\n' ' ')"
+              zip -q -r "$IPA_NAME.zip" "$IPA_NAME"
+              zip -q -s 2000m "$IPA_NAME.zip" --out "${BASE}_parts.zip"
+              rm "$IPA_NAME" "$IPA_NAME.zip"
+              echo "[✔] Partes generadas: $(ls "${BASE}_parts".zip* | tr '\n' ' ')"
             else
               mv "$IPA" "$STAGE/$(basename "$IPA")"
               echo "[✔] IPA movida al stage de artefactos"

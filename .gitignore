@@ -1,0 +1,51 @@
+# ============================================================
+#  SEGURIDAD: nada de esto debe acabar en el historial de Git
+# ============================================================
+
+# Archivos protegidos por copyright (Nintendo) — NUNCA commitear
+*.nsp
+*.nsz
+*.xci
+*.xcz
+*.nup
+*.xcp
+*.keys
+*.key
+prod.keys
+title.keys
+
+# Builds y resultados generados
+*.ipa
+*.ipa.z[0-9][0-9]
+*.zip.[0-9][0-9][0-9]
+*.z01
+*.z02
+
+# Carpetas efímeras / cachés del workflow o de builds locales
+nxnative_core/
+.ephemeral/
+ipa_out/
+artifact_stage/
+dm/
+*.venv
+.venv/
+
+# Cachés y temporales de sistemas / lenguajes
+__pycache__/
+*.py[cod]
+*.swp
+*~
+.cache/
+node_modules/
+dist/
+build/
+.tmp/
+*.tmp
+*.log
+
+# Metadatos de OS / IDE
+.DS_Store
+Thumbs.db
+.desktop_history
+.idea/
+.vscode/

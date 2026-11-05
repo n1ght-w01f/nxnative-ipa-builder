@@ -1,0 +1,220 @@
+name: Compilar juego de Switch a IPA (nxnative)
+
+# ---------------------------------------------------------------
+# Esto nunca se sube con el repo: los archivos con copyright
+# (.nsp / prod.keys) se descargan en tiempo de ejecución, se
+# compilan en el runner y su resultado vive solo como artefacto
+# de 1 día. El historial de Git queda limpio SIEMPRE.
+# ---------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      keys_url:
+        description: "Enlace directo de descarga de prod.keys"
+        required: true
+        type: string
+      nsp_url:
+        description: "Enlace directo de descarga del juego (.nsp / .nsz / .xci)"
+        required: true
+        type: string
+      game_name:
+        description: "Nombre identificador del juego"
+        required: false
+        default: "game"
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: nxnative-build
+  cancel-in-progress: false
+
+jobs:
+  build-ipa:
+    name: Compilar y empaquetar IPA
+    # Imagen macOS de Apple Silicon (M-series).
+    # nxnative necesita macOS 26+ y Xcode 27+; una build de verdad
+    # tarda 30–60 min, así que el job puede heredar hasta 6 horas.
+    runs-on: macos-latest
+    timeout-minutes: 360
+
+    steps:
+      # -------- 1. Dependencias del sistema (brew) --------
+      - name: Instalar dependencias del sistema
+        run: |
+          set -euo pipefail
+          brew update --quiet
+          brew install python cmake xcodegen zstd glslang
+          brew install --cask dotnet-sdk || \
+            echo "::warning::dotnet-sdk no se instaló vía brew; nxnative pedirá dependencias extra solo si las necesita"
+
+      # -------- 2. Clonar SIEMPRE la última versión de nxnative --------
+      # No se clona con el repo ni se cachea: en cada ejecución se
+      # obtiene la rama main actual para no quedarnos atrás.
+      - name: Clonar nxnative (última versión, en tiempo de ejecución)
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          git clone --depth 1 https://github.com/seedds/nxnative.git nxnative_core
+
+      # -------- 3. Dependencias de Python (venv efímero) --------
+      - name: Instalar dependencias de Python
+        run: |
+          set -euo pipefail
+          NXDIR="$GITHUB_WORKSPACE/nxnative_core"
+          cd "$NXDIR"
+          # venv para evitar el error "externally-managed-environment"
+          # de los Python de Homebrew en los runners de macOS.
+          python3 -m venv "$NXDIR/.venv"
+          PIP="$NXDIR/.venv/bin/pip"
+          "$PIP" install --upgrade pip --quiet
+          if [ -f requirements.txt ]; then
+            "$PIP" install -r requirements.txt --quiet
+          fi
+          # Dependencias declaradas por nxnative en su documentación
+          "$PIP" install --quiet lz4 "capstone>=5,<6" fonttools nsz zbic \
+            "backports.zstd; python_version < '3.14'"
+          # El venv queda activo para los siguientes pasos del job
+          echo "PATH=$NXDIR/.venv/bin:$PATH" >> "$GITHUB_ENV"
+
+      # -------- 4. Xcode + Metal Toolchain --------
+      - name: Preparar Xcode y compilar el Metal Toolchain
+        run: |
+          set -euo pipefail
+          XCAPP=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          sudo xcode-select -s "$XCAPP"
+          xcodebuild -version
+          xcodebuild -downloadComponent MetalToolchain || \
+            echo "::warning::Metal Toolchain ya estaba presente o no se pudo precargar"
+
+      # -------- 5. Descarga efímera de keys + juego --------
+      # Los ficheros bajados aquí JAMÁS se commitean a nada y el
+      # runner entero se destruye al terminar el job.
+      - name: Descargar prod.keys y el juego (efímero)
+        env:
+          KEYS_URL: ${{ inputs.keys_url }}
+          NSP_URL: ${{ inputs.nsp_url }}
+        run: |
+          set -euo pipefail
+          NXDIR="$GITHUB_WORKSPACE/nxnative_core"
+
+          # Enmascarar las URLs para que no aparezcan en los logs
+          echo "::add-mask::$KEYS_URL"
+          echo "::add-mask::$NSP_URL"
+          echo "::add-mask::${KEYS_URL//+/__PLUS__}" || true
+
+          # Nombre de juego seguro para rutas y artefactos
+          RAW_NAME="${{ inputs.game_name }}"
+          GAME=$(printf '%s' "$RAW_NAME" | tr -c 'A-Za-z0-9._-' '_' | sed -E 's/^\.+//;s/\.+$//')
+          [ -n "$GAME" ] || GAME="game"
+
+          EPHEMERAL="$NXDIR/.ephemeral"
+          rm -rf "$EPHEMERAL"
+          mkdir -p "$EPHEMERAL"
+
+          # prod.keys
+          echo "[*] Descargando prod.keys ..."
+          curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
+            -o "$EPHEMERAL/prod.keys" "$KEYS_URL"
+          chmod 600 "$EPHEMERAL/prod.keys"
+
+          # Juego (.nsp / .nsz / .xci / .xcz / .nup). El nombre del
+          # fichero se deduce de la URL; si no se reconoce, se
+          # denomina <game>.nsp.
+          NSP_FILE=$(printf '%s' "$NSP_URL" | sed -E 's#.*/##' | sed -E 's/\?.*$//')
+          case "$NSP_FILE" in
+            *.nsp|*.nsz|*.xci|*.xcz|*.nup) ;;
+            *) NSP_FILE="$GAME.nsp" ;;
+          esac
+
+          echo "[*] Descargando el juego ($NSP_FILE) ..."
+          curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
+            -o "$EPHEMERAL/$NSP_FILE" "$NSP_URL"
+
+          # nxnative empaqueta desde una CARPETA que contiene el juego
+          # (base + updates opcionalmente), así que la preparamos.
+          GAME_DIR="$EPHEMERAL/$GAME"
+          mkdir -p "$GAME_DIR"
+          mv "$EPHEMERAL/$NSP_FILE" "$GAME_DIR/"
+
+          # Exportar variables para los siguientes pasos
+          echo "GAME=$GAME" >> "$GITHUB_ENV"
+          echo "GAME_DIR=$GAME_DIR" >> "$GITHUB_ENV"
+          echo "KEY_FILE=$EPHEMERAL/prod.keys" >> "$GITHUB_ENV"
+          echo "[✔] Descarga efímera completada"
+
+      # -------- 6. Build / empaquetado oficial de nxnative --------
+      - name: Compilar la IPA (nxnative)
+        run: |
+          set -euo pipefail
+          NXDIR="$GITHUB_WORKSPACE/nxnative_core"
+          cd "$NXDIR"
+          python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE"
+          # La IPA "aparece en la carpeta del juego"
+
+      # -------- 7. Localizar y (si > 2 GB) dividir la IPA --------
+      - name: Empaquetar salida (dividir si supera 2 GB)
+        run: |
+          set -euo pipefail
+          STAGE="$GITHUB_WORKSPACE/ipa_out/$GAME"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+
+          # Buscar todas las IPA generadas
+          shopt -s nullglob
+          IPAS=("$GAME_DIR"/*.ipa)
+
+          if [ ${#IPAS[@]} -eq 0 ]; then
+            echo "[*] No estaban en la carpeta del juego; buscando en todo el árbol ..."
+            mapfile -t IPAS < <(find "$GITHUB_WORKSPACE" -name '*.ipa' -not -path '*/.ephemeral/*' 2>/dev/null)
+          fi
+
+          if [ ${#IPAS[@]} -eq 0 ]; then
+            echo "::error::No se ha encontrado ningún archivo .ipa tras la build"
+            exit 1
+          fi
+
+          MAX=$(( 2 * 1024 * 1024 * 1024 ))  # 2 GB
+
+          for IPA in "${IPAS[@]}"; do
+            SIZE=$(stat -f %z "$IPA")
+            GB=$(awk "BEGIN {printf \"%.2f\", $SIZE / 1073741824}")
+            echo "[*] IPA encontrada: $(basename "$IPA") ($GB GB)"
+
+            if [ "$SIZE" -gt "$MAX" ]; then
+              echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 2000 MB ..."
+              cd "$STAGE"
+              mv "$IPA" "$(basename "$IPA")"
+              IPA_NAME="$(basename "$IPA")"
+              # 1) comprimir la IPA, 2) dividir en volúmenes de 2000 MB
+              zip -q -r "${IPA_NAME}.zip" "$IPA_NAME"
+              zip -q -s 2000m "${IPA_NAME}.zip" --out "${GAME}_split.zip"
+              rm "${IPA_NAME}" "${IPA_NAME}.zip"
+              echo "[✔] Partes generadas: $(ls "${GAME}_split".zip* | tr '\n' ' ')"
+            else
+              mv "$IPA" "$STAGE/$(basename "$IPA")"
+              echo "[✔] IPA movida al stage de artefactos"
+            fi
+          done
+
+          ls -la "$STAGE"
+
+      # -------- 8. Subir artefacto (se borra solo en 1 día) --------
+      - name: Subir artefacto (retención: 1 día)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-ipa
+          path: ipa_out/**
+          retention-days: 1
+          if-no-files-found: error
+
+      # -------- 9. Limpieza defensiva --------
+      # Borrar keys/juego/IPA del runner por si un fork del workflow
+      # continúa después de este job. (igual los runners se destruyen,
+      # esto es un doble seguro).
+      - name: Limpieza efímera
+        if: ${{ !cancelled() }}
+        run: |
+          rm -rf "$GITHUB_WORKSPACE/nxnative_core/.ephemeral" \
+                 "$GITHUB_WORKSPACE/ipa_out" || true

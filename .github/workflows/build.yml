@@ -23,6 +23,11 @@ on:
         required: false
         default: "game"
         type: string
+      allow_other_metal:
+        description: "Saltar la comprobación estricta del compilador Metal (último recurso)"
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -33,10 +38,10 @@ concurrency:
 jobs:
   build-ipa:
     name: Compilar y empaquetar IPA
-    # Imagen macOS de Apple Silicon (M-series).
-    # nxnative necesita macOS 26+ y Xcode 27+; una build de verdad
-    # tarda 30–60 min, así que el job puede heredar hasta 6 horas.
-    runs-on: macos-latest
+    # Imagen "xcode-27": runner estándar ARM64 de Apple Silicon con
+    # Xcode 27.2 (27B48), la versión que nxnative tiene testeada.
+    # macos-latest solo trae Xcode 26.x y fallaría la comprobación de Metal.
+    runs-on: xcode-27
     timeout-minutes: 360
 
     steps:
@@ -100,7 +105,16 @@ jobs:
       - name: Preparar Xcode y compilar el Metal Toolchain
         run: |
           set -euo pipefail
-          XCAPP=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          # Preferir explícitamente Xcode 27.2 (la que nxnative tiene
+          # testeada: dmsh_chain.lock metalfe-32023.922.4)
+          XCAPP=""
+          for CAND in /Applications/Xcode_27.2*.app /Applications/Xcode-27.2.app; do
+            [ -d "$CAND" ] && XCAPP="$CAND" && break
+          done
+          if [ -z "$XCAPP" ]; then
+            XCAPP=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+            echo "::warning::No se encontró Xcode 27.2; usando $XCAPP (posible fallo de comprobación de Metal)"
+          fi
           sudo xcode-select -s "$XCAPP"
           xcodebuild -version
           xcodebuild -downloadComponent MetalToolchain || \
@@ -161,11 +175,17 @@ jobs:
 
       # -------- 6. Build / empaquetado oficial de nxnative --------
       - name: Compilar la IPA (nxnative)
+        env:
+          ALLOW_OTHER_METAL: ${{ inputs.allow_other_metal }}
         run: |
           set -euo pipefail
           NXDIR="$GITHUB_WORKSPACE/nxnative_core"
           cd "$NXDIR"
-          python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE"
+          EXTRA_ARGS=()
+          if [ "$ALLOW_OTHER_METAL" = "true" ]; then
+            EXTRA_ARGS+=(--allow-other-metal)
+          fi
+          python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE" "${EXTRA_ARGS[@]}"
           # La IPA "aparece en la carpeta del juego"
 
       # -------- 7. Localizar y (si > 2 GB) dividir la IPA --------

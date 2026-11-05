@@ -155,7 +155,24 @@ jobs:
           xcodebuild -downloadComponent MetalToolchain || \
             echo "::warning::Metal Toolchain ya estaba presente o no se pudo precargar"
 
-      # -------- 5. Descarga efímera de keys + juego(s) --------
+      # -------- 5. Libera espacio en el runner (juegos grandes) --------
+      - name: Liberar espacio en disco
+        run: |
+          set -euo pipefail
+          echo "[*] Espacio ANTES:"; df -h /
+          # Elementos preinstalados que nxnative no usa (trick estándar
+          # de los runners macOS para builds de decenas de GB)
+          rm -rf "$HOME/Library/Android/sdk" \
+                 /usr/local/lib/android \
+                 /usr/share/dotnet \
+                 /usr/local/share/edge_driver \
+                 /usr/local/share/gecko_driver \
+                 /usr/local/share/chromedriver \
+                 /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          brew cleanup --prune-all >/dev/null 2>&1 || true
+          echo "[*] Espacio DESPUÉS:"; df -h /
+
+      # -------- 6. Descarga efímera de keys + juego(s) --------
       # Los ficheros bajados aquí JAMÁS se commitean a nada y el
       # runner entero se destruye al terminar el job.
       - name: Descargar prod.keys y el juego (efímero)

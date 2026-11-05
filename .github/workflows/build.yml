@@ -216,6 +216,8 @@ jobs:
           fetch() {
             URL="$1"
             FILE=$(printf '%s' "$URL" | sed -E 's#.*/##' | sed -E 's/\?.*$//')
+            # Decodificar %20, %5B, etc. para nombres reales
+            FILE=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.unquote(sys.argv[1]))' "$FILE")
             case "$FILE" in
               *.nsp|*.nsz|*.xci|*.xcz|*.nup|*.zip) ;;
               *) FILE="download_$(echo "$URL" | cksum | cut -d' ' -f1).nsp" ;;
@@ -321,14 +323,107 @@ jobs:
 
           ls -la "$STAGE"
 
-      # -------- 8. Subir artefacto (se borra solo en 1 día) --------
-      - name: "Subir artefacto (retención: 1 día)"
+      # -------- 8. Subir artefactos (un volumen por artefacto) --------
+      # GitHub limita cada artefacto (~5-10 GB), así que cada volumen
+      # del ZIP dividido se sube como artefacto propio (≤ 2 GB).
+      # Retención 1 día: se borran solos.
+      - name: "Artefacto: IPA (si no se dividió)"
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-ipa
-          path: ipa_out/**
+          path: 'ipa_out/**/*.ipa'
           retention-days: 1
-          if-no-files-found: error
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol01"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol01
+          path: 'ipa_out/**/*_parts.zip.z01'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol02"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol02
+          path: 'ipa_out/**/*_parts.zip.z02'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol03"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol03
+          path: 'ipa_out/**/*_parts.zip.z03'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol04"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol04
+          path: 'ipa_out/**/*_parts.zip.z04'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol05"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol05
+          path: 'ipa_out/**/*_parts.zip.z05'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol06"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol06
+          path: 'ipa_out/**/*_parts.zip.z06'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol07"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol07
+          path: 'ipa_out/**/*_parts.zip.z07'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol08"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol08
+          path: 'ipa_out/**/*_parts.zip.z08'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol09"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol09
+          path: 'ipa_out/**/*_parts.zip.z09'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: "Artefacto: vol10 (volumen final)"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.game_name }}-vol10
+          path: 'ipa_out/**/*_parts.zip'
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - name: Verificar que hay salida
+        run: |
+          set -euo pipefail
+          COUNT=$(ls -1 "$GITHUB_WORKSPACE/ipa_out/$GAME" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No se subió ningún artefacto"
+            exit 1
+          fi
+          echo "[✔] $COUNT archivo(s) subidos como artefacto(s)"
 
       # -------- 9. Limpieza defensiva --------
       # Borrar keys/juego/IPA del runner por si un fork del workflow

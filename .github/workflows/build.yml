@@ -181,11 +181,11 @@ jobs:
           set -euo pipefail
           NXDIR="$GITHUB_WORKSPACE/nxnative_core"
           cd "$NXDIR"
-          EXTRA_ARGS=()
           if [ "$ALLOW_OTHER_METAL" = "true" ]; then
-            EXTRA_ARGS+=(--allow-other-metal)
+            python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE" --allow-other-metal
+          else
+            python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE"
           fi
-          python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE" "${EXTRA_ARGS[@]}"
           # La IPA "aparece en la carpeta del juego"
 
       # -------- 7. Localizar y (si > 2 GB) dividir la IPA --------

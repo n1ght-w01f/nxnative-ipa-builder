@@ -10,19 +10,50 @@ name: Compilar juego de Switch a IPA (nxnative)
 on:
   workflow_dispatch:
     inputs:
-      keys_url:
-        description: "Enlace directo de prod.keys (opcional si usas el Secret KEYS_URL)"
-        required: false
-        type: string
       nsp_url:
-        description: "Enlace directo del juego (.nsp / .nsz / .xci) (opcional si usas el Secret NSP_URL)"
+        description: "URL directa del juego base (.nsp/.xci/.nsz/.xcz/.nup/.zip)"
+        required: true
+        type: string
+      extra_urls:
+        description: "URLs de updates/DLC del MISMO juego, separadas por espacios"
         required: false
+        default: ""
+        type: string
+      keys_url:
+        description: "URL directa de prod.keys ('none' para ignorar el Secret — juegos Switch 2/NUP)"
+        required: false
+        default: ""
         type: string
       game_name:
         description: "Nombre identificador del juego"
         required: false
         default: "game"
         type: string
+      language:
+        description: "Idioma (ej. es, ja, en-GB; vacío = inglés)"
+        required: false
+        default: ""
+        type: string
+      package:
+        description: "Versión a empaquetar (ej. v0; vacío = la más reciente)"
+        required: false
+        default: ""
+        type: string
+      gpu:
+        description: "Archivos de pipeline GPU extra (ej. g18p,g17p; vacío = por defecto)"
+        required: false
+        default: ""
+        type: string
+      app_name:
+        description: "Nombre en la pantalla de inicio (opcional)"
+        required: false
+        default: ""
+        type: string
+      show_fps:
+        description: "Mostrar el contador de FPS en pantalla"
+        required: false
+        default: false
+        type: boolean
       allow_other_metal:
         description: "Saltar la comprobación estricta del compilador Metal (último recurso)"
         required: false
@@ -54,16 +85,20 @@ jobs:
       - name: Resolver URLs de descarga
         id: urls
         env:
-          KEYS_URL: ${{ inputs.keys_url || secrets.KEYS_URL }}
           NSP_URL: ${{ inputs.nsp_url || secrets.NSP_URL }}
+          KEYS_URL: ${{ inputs.keys_url || secrets.KEYS_URL }}
         run: |
           set -euo pipefail
-          if [ -z "$KEYS_URL" ] || [ -z "$NSP_URL" ]; then
-            echo "::error::Faltan URLs. Pásalas como inputs del workflow o configúralas como Secrets del repo: KEYS_URL y NSP_URL (Settings → Secrets → Actions)."
+          # 'none' anula el Secret (para builds Switch 2 sin keys)
+          if [ "$KEYS_URL" = "none" ]; then KEYS_URL=""; fi
+          if [ -z "$NSP_URL" ]; then
+            echo "::error::Falta la URL del juego. Pásala como input o como Secret NSP_URL."
             exit 1
           fi
-          echo "KEYS_URL=$KEYS_URL" >> "$GITHUB_ENV"
           echo "NSP_URL=$NSP_URL" >> "$GITHUB_ENV"
+          echo "KEYS_URL=$KEYS_URL" >> "$GITHUB_ENV"
+
+      # -------- 1. Dependencias del sistema (brew) --------
       - name: Instalar dependencias del sistema
         run: |
           set -euo pipefail
@@ -120,18 +155,20 @@ jobs:
           xcodebuild -downloadComponent MetalToolchain || \
             echo "::warning::Metal Toolchain ya estaba presente o no se pudo precargar"
 
-      # -------- 5. Descarga efímera de keys + juego --------
+      # -------- 5. Descarga efímera de keys + juego(s) --------
       # Los ficheros bajados aquí JAMÁS se commitean a nada y el
       # runner entero se destruye al terminar el job.
       - name: Descargar prod.keys y el juego (efímero)
+        env:
+          EXTRA_URLS: ${{ inputs.extra_urls }}
         run: |
           set -euo pipefail
           NXDIR="$GITHUB_WORKSPACE/nxnative_core"
 
           # Enmascarar las URLs para que no aparezcan en los logs
-          echo "::add-mask::$KEYS_URL"
           echo "::add-mask::$NSP_URL"
-          echo "::add-mask::${KEYS_URL//+/__PLUS__}" || true
+          echo "::add-mask::$KEYS_URL"
+          echo "::add-mask::$EXTRA_URLS"
 
           # Nombre de juego seguro para rutas y artefactos
           RAW_NAME="${{ inputs.game_name }}"
@@ -142,54 +179,86 @@ jobs:
           rm -rf "$EPHEMERAL"
           mkdir -p "$EPHEMERAL"
 
-          # prod.keys
-          echo "[*] Descargando prod.keys ..."
-          curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
-            -o "$EPHEMERAL/prod.keys" "$KEYS_URL"
-          chmod 600 "$EPHEMERAL/prod.keys"
+          # prod.keys (opcional: los juegos Switch 2 por NUP/dump no la necesitan)
+          KEY_FILE=""
+          if [ -n "$KEYS_URL" ]; then
+            echo "[*] Descargando prod.keys ..."
+            curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
+              -o "$EPHEMERAL/prod.keys" "$KEYS_URL"
+            chmod 600 "$EPHEMERAL/prod.keys"
+            KEY_FILE="$EPHEMERAL/prod.keys"
+          else
+            echo "[*] Sin prod.keys (correcto para NUP/dump de Switch 2; los NSP de Switch 1 sí la necesitan)"
+          fi
 
-          # Juego (.nsp / .nsz / .xci / .xcz / .nup). El nombre del
-          # fichero se deduce de la URL; si no se reconoce, se
-          # denomina <game>.nsp.
-          NSP_FILE=$(printf '%s' "$NSP_URL" | sed -E 's#.*/##' | sed -E 's/\?.*$//')
-          case "$NSP_FILE" in
-            *.nsp|*.nsz|*.xci|*.xcz|*.nup) ;;
-            *) NSP_FILE="$GAME.nsp" ;;
-          esac
-
-          echo "[*] Descargando el juego ($NSP_FILE) ..."
-          curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
-            -o "$EPHEMERAL/$NSP_FILE" "$NSP_URL"
-
-          # nxnative empaqueta desde una CARPETA que contiene el juego
-          # (base + updates opcionalmente), así que la preparamos.
+          # Carpeta del juego: base + updates + DLC viven juntos aquí.
+          # nxnative detecta las versiones por title ID de cada archivo.
           GAME_DIR="$EPHEMERAL/$GAME"
           mkdir -p "$GAME_DIR"
-          mv "$EPHEMERAL/$NSP_FILE" "$GAME_DIR/"
+
+          fetch() {
+            URL="$1"
+            FILE=$(printf '%s' "$URL" | sed -E 's#.*/##' | sed -E 's/\?.*$//')
+            case "$FILE" in
+              *.nsp|*.nsz|*.xci|*.xcz|*.nup|*.zip) ;;
+              *) FILE="download_$(echo "$URL" | cksum | cut -d' ' -f1).nsp" ;;
+            esac
+            echo "[*] Descargando ($FILE) ..."
+            curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
+              -o "$GAME_DIR/$FILE" "$URL"
+            # Un .zip se descomprime dentro de la carpeta del juego
+            # (útil para volcar una carpeta base/ + updates/ + dlc/)
+            case "$FILE" in
+              *.zip)
+                echo "[*] Descomprimiendo $FILE ..."
+                unzip -q -o "$GAME_DIR/$FILE" -d "$GAME_DIR/"
+                rm "$GAME_DIR/$FILE"
+                ;;
+            esac
+          }
+
+          fetch "$NSP_URL"
+          for URL in $EXTRA_URLS; do
+            fetch "$URL"
+          done
+
+          echo "[✔] Contenido de la carpeta del juego:"
+          ls -la "$GAME_DIR"
 
           # Exportar variables para los siguientes pasos
           echo "GAME=$GAME" >> "$GITHUB_ENV"
           echo "GAME_DIR=$GAME_DIR" >> "$GITHUB_ENV"
-          echo "KEY_FILE=$EPHEMERAL/prod.keys" >> "$GITHUB_ENV"
+          echo "KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
           echo "[✔] Descarga efímera completada"
 
       # -------- 6. Build / empaquetado oficial de nxnative --------
       - name: Compilar la IPA (nxnative)
         env:
+          LANGUAGE: ${{ inputs.language }}
+          PACKAGE: ${{ inputs.package }}
+          GPU: ${{ inputs.gpu }}
+          APP_NAME: ${{ inputs.app_name }}
+          SHOW_FPS: ${{ inputs.show_fps }}
           ALLOW_OTHER_METAL: ${{ inputs.allow_other_metal }}
         run: |
           set -euo pipefail
           NXDIR="$GITHUB_WORKSPACE/nxnative_core"
           cd "$NXDIR"
-          if [ "$ALLOW_OTHER_METAL" = "true" ]; then
-            python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE" --allow-other-metal
-          else
-            python3 scripts/build_ipa_from_nsp.py "$GAME_DIR" -k "$KEY_FILE"
-          fi
+          df -h /
+          CMD=(python3 scripts/build_ipa_from_nsp.py "$GAME_DIR")
+          if [ -n "$KEY_FILE" ]; then CMD+=(-k "$KEY_FILE"); fi
+          if [ -n "$LANGUAGE" ]; then CMD+=(-l "$LANGUAGE"); fi
+          if [ -n "$PACKAGE" ]; then CMD+=(-p "$PACKAGE"); fi
+          if [ -n "$GPU" ]; then CMD+=(--gpu "$GPU"); fi
+          if [ -n "$APP_NAME" ]; then CMD+=(--app-name "$APP_NAME"); fi
+          if [ "$SHOW_FPS" = "true" ]; then CMD+=(--show-fps); fi
+          if [ "$ALLOW_OTHER_METAL" = "true" ]; then CMD+=(--allow-other-metal); fi
+          python3 -c 'print("CMD:", " ".join(__import__("shlex").quote(x) for x in __import__("sys").argv[1:]))' "${CMD[@]}" || true
+          "${CMD[@]}"
           # La IPA "aparece en la carpeta del juego"
 
       # -------- 7. Localizar y (si > 2 GB) dividir la IPA --------
-      - name: Empaquetar salida (dividir si supera 2 GB)
+      - name: "Empaquetar salida (dividir si supera 2 GB)"
         run: |
           set -euo pipefail
           STAGE="$GITHUB_WORKSPACE/ipa_out/$GAME"
@@ -223,7 +292,6 @@ jobs:
               IPA_NAME="$(basename "$IPA")"
               BASE="${IPA_NAME%.ipa}"
               mv "$IPA" "$IPA_NAME"
-              # 1) comprimir la IPA, 2) dividir en volúmenes de 2000 MB
               zip -q -r "$IPA_NAME.zip" "$IPA_NAME"
               zip -q -s 2000m "$IPA_NAME.zip" --out "${BASE}_parts.zip"
               rm "$IPA_NAME" "$IPA_NAME.zip"

@@ -43,10 +43,23 @@ El workflow descarga tus archivos por `curl -L` desde una URL. Necesitas
 1. En GitHub, entra en tu repo → pestaña **Actions** → a la izquierda
    selecciona **«Compilar juego de Switch a IPA (nxnative)»**.
 2. Pulsa **Run workflow** (→ *Run workflow* sobre el desplegable `main`).
-3. Rellena los 3 campos:
-   - **`keys_url`** → enlace directo de tu `prod.keys`.
-   - **`nsp_url`** → enlace directo de tu juego.
-   - **`game_name`** (opcional) → nombre bonito, p. ej. `mario-odyssey`.
+3. Rellena los campos:
+   - **`nsp_url`** → enlace directo de tu juego base (`.nsp`, `.xci`, `.nsz`,
+     `.xcz`, `.nup` o incluso un `.zip` con la carpeta del juego).
+   - **`extra_urls`** (opcional) → enlaces directos de **updates y DLC del
+     mismo juego**, separados por espacios. Van a la misma carpeta y
+     nxnative detecta las versiones por title ID.
+   - **`keys_url`** (opcional) → enlace directo de tu `prod.keys`.
+     **Solo los juegos de Switch 1 la necesitan** (los de Switch 2 vía
+     `.nup`/dump no). Escribe `none` para ignorar el Secret guardado.
+   - **`game_name`** (opcional) → nombre identificador, p. ej. `mario-wonder`.
+   - **`language`** (opcional) → `es`, `ja`, `en-GB`... (vacío = inglés).
+   - **`package`** (opcional) → versión a empaquetar, ej. `v0` (vacío = la
+     más reciente que haya en la carpeta).
+   - **`gpu`** (opcional) → archivos de pipeline GPU extra, ej. `g18p,g17p`
+     (recomendado por la documentación de nxnative para Breath of the Wild).
+   - **`app_name`** (opcional) → nombre que verás en el home del iPhone.
+   - **`show_fps`** → muestra el contador de FPS en la esquina.
 
 > 🔒 **Recomendado en repos públicos:** en un repo público cualquiera puede
 > ver los *inputs* de cada ejecución en la pestaña *Actions*. Para que tus
@@ -61,6 +74,50 @@ El workflow descarga tus archivos por `curl -L` desde una URL. Necesitas
    IPA con AltStore, Sideloadly o LiveContainer.
    > 📌 Si tu herramienta de sideload ofrece **«Increased Memory Limit»**,
    > actívala: los juegos grandes lo necesitan.
+
+---
+
+## 🧩 Juegos soportados y casos especiales
+
+### Updates y DLC (varios archivos del mismo juego)
+
+El script de nxnative acepta una **carpeta con todos los archivos del juego**:
+base + updates + DLC (`.nsp`, `.xci`, `.nsz`, `.xcz`). En el workflow solo
+tienes que poner la URL del **base** en `nsp_url` y el resto (updates/DLC)
+en **`extra_urls`** separados por espacios:
+
+- `nsp_url` → `https://tunel.trycloudflare.com/BreathOfTheWild%20%5Bbase%5D.xci`
+- `extra_urls` → `https://tunel.trycloudflare.com/BOTW%20%5Bv208896%5D.nsp https://tunel.trycloudflare.com/DLC.nsp`
+
+> 💡 Si en vez de archivos sueltos tienes una **carpeta de dump** con el
+> juego (`base/`, `updates/<versión>/`, `dlc/...`), comprímela en un `.zip`,
+> súbelo y ponlo en `nsp_url`: el workflow lo descomprime solo dentro de la
+> carpeta del juego.
+
+### Switch 2 (formato NUP) — sin prod.keys
+
+Los juegos de **Switch 2** se compilan desde un único contenedor **`.nup`**
+(o una carpeta de sus archivos) y **NO necesitan `prod.keys`**:
+
+- `nsp_url` → `https://tunel.trycloudflare.com/MarioKartWorld.nup`
+- `keys_url` → déjalo vacío, o escribe **`none`** si tienes el Secret
+  `KEYS_URL` guardado y no quieres que se use en esa build.
+
+> ⚠️ Estado del proyecto: los juegos de Switch 2 están **testeados en Mac**
+> (`--platform mac-app`); en iPhone/iPad el proyecto los marca como
+> *untested*. El workflow produce la IPA igualmente.
+
+### ¿FPS? No hay que hardcodear nada
+
+- El frame rate **se elige en la propia app** (pantalla de ajustes que nxnative
+  genera: frame rate y render scale) y muchos juegos leen el límite del código
+  del juego.
+- Para juegos como **Breath of the Wild** la tabla oficial de nxnative indica
+  **«60 fps with 1.9.0»**: la clave es incluir el **update 1.9.0** en
+  `extra_urls` junto al juego base, y empaquetar esa combinación.
+- El input **`show_fps`** añade el contador de FPS en pantalla para verificarlo.
+- Para BotW la documentación recomienda además `gpu` = `g18p,g17p` (incluye el
+  archivo de pipelines para más GPUs aparte de la A19/A19 Pro).
 
 ---
 

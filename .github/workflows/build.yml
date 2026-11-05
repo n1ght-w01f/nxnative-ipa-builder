@@ -11,8 +11,8 @@ on:
   workflow_dispatch:
     inputs:
       nsp_url:
-        description: "URL directa del juego base (.nsp/.xci/.nsz/.xcz/.nup/.zip)"
-        required: true
+        description: "URL directa del juego base (opcional si usas el Secret NSP_URL)"
+        required: false
         type: string
       extra_urls:
         description: "URLs de updates/DLC del MISMO juego, separadas por espacios"

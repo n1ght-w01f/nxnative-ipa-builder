@@ -124,13 +124,19 @@ Los juegos de **Switch 2** se compilan desde un único contenedor **`.nup`**
 ## 🧩 ¿Y si el artefacto viene dividido en varios `.zip`?
 
 Cuando el juego ocupa **más de 2 GB**, el workflow lo trocea en volúmenes ZIP
-de 2000 MB: `mario-odyssey_parts.zip`, `mario-odyssey_parts.z01`,
-`.z02`, ... Para **unirlos** y recuperar la IPA:
+de 2000 MB y sube **un artefacto por volumen** (`<game>-vol01`,
+`<game>-vol02`, ..., el último es el `.zip` que cierra el archivo), porque
+GitHub limita el tamaño de cada artefacto. Ejemplo con `botw` (IPA de 16 GB):
+`botw-vol01` ... `botw-vol10`. Para **unirlos** y recuperar la IPA:
+
+1. Descarga **todos** los artefactos (pestaña *Artifacts* del run, o
+   `gh run download <run-id>` — los baja todos de una) en **la misma carpeta**.
+2. Descomprime cada artefacto: tendrás archivos como
+   `BotW...ipa` (o `..._parts.zip`, `.z01`, `.z02`, ...).
 
 **Windows (con 7-Zip — más fácil):**
-1. Descarga **todas** las partes en la misma carpeta.
-2. Clic derecho sobre `mario-odyssey_parts.zip` → *7-Zip → Extraer en...*
-   (7-Zip entiende los volúmenes automáticamente).
+- Clic derecho sobre `..._parts.zip` → *7-Zip → Extraer en...*
+  (7-Zip entiende los volúmenes automáticamente).
 
 **Windows (símbolo del sistema, sin 7-Zip):**
 ```bat

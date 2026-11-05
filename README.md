@@ -47,6 +47,13 @@ El workflow descarga tus archivos por `curl -L` desde una URL. Necesitas
    - **`keys_url`** → enlace directo de tu `prod.keys`.
    - **`nsp_url`** → enlace directo de tu juego.
    - **`game_name`** (opcional) → nombre bonito, p. ej. `mario-odyssey`.
+
+> 🔒 **Recomendado en repos públicos:** en un repo público cualquiera puede
+> ver los *inputs* de cada ejecución en la pestaña *Actions*. Para que tus
+> URLs no se vean en absoluto, guárdalas una vez en
+> **Settings → Secrets and variables → Actions → New repository secret**
+> con los nombres **`KEYS_URL`** y **`NSP_URL`** (los campos del workflow
+> pueden quedar vacíos y el workflow usará los Secrets automáticamente).
 4. Pulsa **Run workflow** y espera ⏳ (**30–60 min** la primera vez; las
    siguientes usan mejor la caché). Al terminar, en la misma ejecución verás
    en **Artifacts** el resultado con nombre `<game_name>-ipa`. Descárgalo

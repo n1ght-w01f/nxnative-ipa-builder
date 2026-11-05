@@ -11,12 +11,12 @@ on:
   workflow_dispatch:
     inputs:
       keys_url:
-        description: "Enlace directo de descarga de prod.keys"
-        required: true
+        description: "Enlace directo de prod.keys (opcional si usas el Secret KEYS_URL)"
+        required: false
         type: string
       nsp_url:
-        description: "Enlace directo de descarga del juego (.nsp / .nsz / .xci)"
-        required: true
+        description: "Enlace directo del juego (.nsp / .nsz / .xci) (opcional si usas el Secret NSP_URL)"
+        required: false
         type: string
       game_name:
         description: "Nombre identificador del juego"
@@ -40,7 +40,25 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      # -------- 1. Dependencias del sistema (brew) --------
+      # -------- 0. Resolver URLs (inputs visibles o Secrets) --------
+      # En repos públicos, cualquiera puede VER los inputs de cada
+      # ejecución en la pestaña Actions. Por eso se recomienda poner
+      # las URLs en los Repository Secrets KEYS_URL / NSP_URL
+      # (Settings → Secrets and variables → Actions): nunca se ven
+      # ni en la interfaz ni en los logs (add-mask).
+      - name: Resolver URLs de descarga
+        id: urls
+        env:
+          KEYS_URL: ${{ inputs.keys_url || secrets.KEYS_URL }}
+          NSP_URL: ${{ inputs.nsp_url || secrets.NSP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYS_URL" ] || [ -z "$NSP_URL" ]; then
+            echo "::error::Faltan URLs. Pásalas como inputs del workflow o configúralas como Secrets del repo: KEYS_URL y NSP_URL (Settings → Secrets → Actions)."
+            exit 1
+          fi
+          echo "KEYS_URL=$KEYS_URL" >> "$GITHUB_ENV"
+          echo "NSP_URL=$NSP_URL" >> "$GITHUB_ENV"
       - name: Instalar dependencias del sistema
         run: |
           set -euo pipefail
@@ -92,9 +110,6 @@ jobs:
       # Los ficheros bajados aquí JAMÁS se commitean a nada y el
       # runner entero se destruye al terminar el job.
       - name: Descargar prod.keys y el juego (efímero)
-        env:
-          KEYS_URL: ${{ inputs.keys_url }}
-          NSP_URL: ${{ inputs.nsp_url }}
         run: |
           set -euo pipefail
           NXDIR="$GITHUB_WORKSPACE/nxnative_core"

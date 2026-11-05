@@ -217,7 +217,7 @@ jobs:
           ls -la "$STAGE"
 
       # -------- 8. Subir artefacto (se borra solo en 1 día) --------
-      - name: Subir artefacto (retención: 1 día)
+      - name: "Subir artefacto (retención: 1 día)"
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-ipa

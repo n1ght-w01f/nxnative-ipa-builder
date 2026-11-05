@@ -160,11 +160,21 @@ jobs:
         run: |
           set -euo pipefail
           echo "[*] Espacio ANTES:"; df -h /
-          # Elementos preinstalados que nxnative no usa (trick estándar
-          # de los runners macOS para builds de decenas de GB)
+          # Xcodes que no usamos (cada uno ~11 GB). Se conserva el 27.2,
+          # que es el seleccionado y el que nxnative tiene testeado.
+          for XCAPP in /Applications/Xcode*.app; do
+            case "$XCAPP" in
+              *27.2*) echo "[*] Conservando $XCAPP" ;;
+              *) echo "[*] Borrando $XCAPP"; rm -rf "$XCAPP" || true ;;
+            esac
+          done
+          # SDKs y caches preinstaladas que nxnative no usa
           rm -rf "$HOME/Library/Android/sdk" \
                  /usr/local/lib/android \
                  /usr/share/dotnet \
+                 /Users/runner/.cargo \
+                 /Users/runner/.rustup \
+                 /Library/Frameworks/Mono.framework \
                  /usr/local/share/edge_driver \
                  /usr/local/share/gecko_driver \
                  /usr/local/share/chromedriver \

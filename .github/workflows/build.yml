@@ -347,13 +347,13 @@ jobs:
             echo "[*] IPA encontrada: $(basename "$IPA") ($GB GB)"
 
             if [ "$SIZE" -gt "$MAX" ]; then
-              echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 2000 MB ..."
+              echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 4500 MB ..."
               cd "$OUT"
               IPA_NAME="$(basename "$IPA")"
               BASE="${IPA_NAME%.ipa}"
               mv "$IPA" "$IPA_NAME"
               zip -q -r "$IPA_NAME.zip" "$IPA_NAME"
-              zip -q -s 2000m "$IPA_NAME.zip" --out "${BASE}_parts.zip"
+              zip -q -s 4500m "$IPA_NAME.zip" --out "${BASE}_parts.zip"
               rm "$IPA_NAME" "$IPA_NAME.zip"
               echo "[✔] Partes generadas: $(ls "${BASE}_parts".zip* | tr '\n' ' ')"
             else
@@ -365,9 +365,9 @@ jobs:
           ls -la "$OUT"
 
       # -------- 8. Subir artefactos (un volumen por artefacto) --------
-      # GitHub limita cada artefacto (~5-10 GB), así que cada volumen
-      # del ZIP dividido se sube como artefacto propio (≤ 2 GB).
-      # Retención 1 día: se borran solos.
+      # Test empírico: upload-artifact@v4 acepta ≥ 6 GiB por artefacto,
+      # así que volúmenes de 4500 MB → 3-4 artefactos para una IPA de
+      # ~15 GB. Retención 1 día: se borran solos.
       - name: "Artefacto: IPA (si no se dividió)"
         uses: actions/upload-artifact@v4
         with:
@@ -467,7 +467,7 @@ jobs:
           fi
           # Cada archivo debe estar cubierto por un patrón de subida
           # (*.ipa, *_parts.zip o *_parts.zNN); si no, algún volumen se
-          # quedaría sin subir (fue el caso del primer intento de BotW).
+          # quedaría sin subir.
           cd "$GITHUB_WORKSPACE/ipa_out"
           for f in $(find . -type f | sed 's|^\./||'); do
             case "$f" in
@@ -478,6 +478,33 @@ jobs:
                 ;;
             esac
           done
+          # Resumen en la página del run: qué artefactos descargar
+          {
+            echo "## Artefactos generados ($COUNT)"
+            echo ""
+            echo "| Artefacto a descargar | Archivo que contiene |"
+            echo "|---|---|"
+            for f in $(ls "$DIR"); do
+              case "$f" in
+                *.ipa) ART="${GAME}-ipa" ;;
+                *_parts.z01) ART="${GAME}-vol01" ;;
+                *_parts.z02) ART="${GAME}-vol02" ;;
+                *_parts.z03) ART="${GAME}-vol03" ;;
+                *_parts.z04) ART="${GAME}-vol04" ;;
+                *_parts.z05) ART="${GAME}-vol05" ;;
+                *_parts.z06) ART="${GAME}-vol06" ;;
+                *_parts.z07) ART="${GAME}-vol07" ;;
+                *_parts.z08) ART="${GAME}-vol08" ;;
+                *_parts.z09) ART="${GAME}-vol09" ;;
+                *_parts.zip) ART="${GAME}-vol10 (volumen final)" ;;
+                *) ART="desconocido" ;;
+              esac
+              echo "| $ART | $f |"
+            done
+            echo ""
+            echo "Los pasos volNN sin archivo correspondiente son huecos del"
+            echo "diseno: este juego no genero tantos volumenes. No falta nada."
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "[✔] $COUNT archivo(s), todos cubiertos por artefactos:"
           ls -la "$DIR"
 

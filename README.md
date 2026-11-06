@@ -123,11 +123,16 @@ Los juegos de **Switch 2** se compilan desde un único contenedor **`.nup`**
 
 ## 🧩 ¿Y si el artefacto viene dividido en varios `.zip`?
 
-Cuando el juego ocupa **más de 2 GB**, el workflow lo trocea en volúmenes ZIP
-de 2000 MB y sube **un artefacto por volumen** (`<game>-vol01`,
-`<game>-vol02`, ..., el último es el `.zip` que cierra el archivo), porque
-GitHub limita el tamaño de cada artefacto. Ejemplo con `botw` (IPA de 16 GB):
-`botw-vol01` ... `botw-vol10`. Para **unirlos** y recuperar la IPA:
+Las IPA de hasta **6 GiB se suben como UN solo artefacto** (`<game>-ipa`,
+límite probado empíricamente). Las más grandes se trocean en volúmenes ZIP
+de **4500 MB** y se sube **un artefacto por volumen** (`<game>-vol01`,
+`<game>-vol02`, ..., el último es el `.zip` que cierra el archivo). Ejemplo
+con `botw` (IPA de 14,75 GB): 4 volúmenes → `botw-vol01`, `botw-vol02`,
+`botw-vol03` y `botw-vol10`.
+
+> ℹ️ Los pasos `volNN` que digan *«no files found»* son huecos del diseño:
+> ese juego no generó tantos volúmenes. En el *Summary* del run hay una
+> tabla con la lista exacta de artefactos a descargar.
 
 1. Descarga **todos** los artefactos (pestaña *Artifacts* del run, o
    `gh run download <run-id>` — los baja todos de una) en **la misma carpeta**.

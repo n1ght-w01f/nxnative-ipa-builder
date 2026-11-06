@@ -316,8 +316,8 @@ jobs:
           ls -la "$SRC"
           df -h /
 
-      # -------- 8. Localizar y (si > 2 GB) dividir la IPA --------
-      - name: "Empaquetar salida (dividir si supera 2 GB)"
+      # -------- 8. Localizar y (si > 6 GiB) dividir la IPA --------
+      - name: "Empaquetar salida (dividir si supera 6 GiB)"
         run: |
           set -euo pipefail
           OUT="$GITHUB_WORKSPACE/ipa_out/$GAME"
@@ -339,7 +339,7 @@ jobs:
             exit 1
           fi
 
-          MAX=$(( 2 * 1024 * 1024 * 1024 ))  # 2 GB
+          MAX=$(( 6 * 1024 * 1024 * 1024 ))  # 6 GiB: cap probado de un artefacto
 
           for IPA in "${IPAS[@]}"; do
             SIZE=$(stat -f %z "$IPA")
@@ -347,7 +347,7 @@ jobs:
             echo "[*] IPA encontrada: $(basename "$IPA") ($GB GB)"
 
             if [ "$SIZE" -gt "$MAX" ]; then
-              echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 4500 MB ..."
+              echo "[*] Supera 6 GiB → dividiendo en volúmenes ZIP de 4500 MB ..."
               cd "$OUT"
               IPA_NAME="$(basename "$IPA")"
               BASE="${IPA_NAME%.ipa}"

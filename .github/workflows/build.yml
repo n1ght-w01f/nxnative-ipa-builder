@@ -286,21 +286,52 @@ jobs:
           "${CMD[@]}"
           # La IPA "aparece en la carpeta del juego"
 
-      # -------- 7. Localizar y (si > 2 GB) dividir la IPA --------
+      # -------- 7. Mover la IPA y vaciar el runner --------
+      # La IPA ya está construida: se saca del árbol de nxnative y se
+      # borra TODO lo demás (NSPs de origen, juego extraído, venv,
+      # repo completo). Eso libera ~30 GB para dividir con margen.
+      - name: Mover la IPA y liberar espacio
+        run: |
+          set -euo pipefail
+          SRC="$GITHUB_WORKSPACE/ipa_stage/$GAME"
+          rm -rf "$SRC"
+          mkdir -p "$SRC"
+          shopt -s nullglob
+          IPAS=("$GAME_DIR"/*.ipa)
+          if [ ${#IPAS[@]} -eq 0 ]; then
+            mapfile -t IPAS < <(find "$GITHUB_WORKSPACE" -name '*.ipa' -not -path '*/ipa_out/*' -not -path '*/ipa_stage/*' 2>/dev/null)
+          fi
+          if [ ${#IPAS[@]} -eq 0 ]; then
+            echo "::error::La build no ha generado ningún .ipa"
+            exit 1
+          fi
+          for IPA in "${IPAS[@]}"; do
+            mv "$IPA" "$SRC/$(basename "$IPA")"
+          done
+          # Borrar el proyecto nxnative completo (NSPs, extraído, venv)
+          rm -rf "$GITHUB_WORKSPACE/nxnative_core"
+          # Cachés de pipelines de Metal que el host deja en el sistema
+          rm -rf "$(getconf DARWIN_USER_CACHE_DIR 2>/dev/null)/com.apple.gpuarchiver" 2>/dev/null || true
+          echo "[✔] IPA(s) en stage, runner vaciado:"
+          ls -la "$SRC"
+          df -h /
+
+      # -------- 8. Localizar y (si > 2 GB) dividir la IPA --------
       - name: "Empaquetar salida (dividir si supera 2 GB)"
         run: |
           set -euo pipefail
-          STAGE="$GITHUB_WORKSPACE/ipa_out/$GAME"
-          rm -rf "$STAGE"
-          mkdir -p "$STAGE"
+          OUT="$GITHUB_WORKSPACE/ipa_out/$GAME"
+          SRC="$GITHUB_WORKSPACE/ipa_stage/$GAME"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
 
           # Buscar todas las IPA generadas
           shopt -s nullglob
-          IPAS=("$GAME_DIR"/*.ipa)
+          IPAS=("$SRC"/*.ipa)
 
           if [ ${#IPAS[@]} -eq 0 ]; then
-            echo "[*] No estaban en la carpeta del juego; buscando en todo el árbol ..."
-            mapfile -t IPAS < <(find "$GITHUB_WORKSPACE" -name '*.ipa' -not -path '*/.ephemeral/*' 2>/dev/null)
+            echo "[*] No estaban en el stage; buscando en todo el árbol ..."
+            mapfile -t IPAS < <(find "$GITHUB_WORKSPACE" -name '*.ipa' -not -path '*/ipa_out/*' -not -path '*/ipa_stage/*' 2>/dev/null)
           fi
 
           if [ ${#IPAS[@]} -eq 0 ]; then
@@ -317,7 +348,7 @@ jobs:
 
             if [ "$SIZE" -gt "$MAX" ]; then
               echo "[*] Supera 2 GB → dividiendo en volúmenes ZIP de 2000 MB ..."
-              cd "$STAGE"
+              cd "$OUT"
               IPA_NAME="$(basename "$IPA")"
               BASE="${IPA_NAME%.ipa}"
               mv "$IPA" "$IPA_NAME"
@@ -326,12 +357,12 @@ jobs:
               rm "$IPA_NAME" "$IPA_NAME.zip"
               echo "[✔] Partes generadas: $(ls "${BASE}_parts".zip* | tr '\n' ' ')"
             else
-              mv "$IPA" "$STAGE/$(basename "$IPA")"
+              mv "$IPA" "$OUT/$(basename "$IPA")"
               echo "[✔] IPA movida al stage de artefactos"
             fi
           done
 
-          ls -la "$STAGE"
+          ls -la "$OUT"
 
       # -------- 8. Subir artefactos (un volumen por artefacto) --------
       # GitHub limita cada artefacto (~5-10 GB), así que cada volumen

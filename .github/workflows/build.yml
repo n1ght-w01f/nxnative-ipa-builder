@@ -380,7 +380,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol01
-          path: 'ipa_out/**/*_parts.zip.z01'
+          path: 'ipa_out/**/*_parts.z01'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -388,7 +388,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol02
-          path: 'ipa_out/**/*_parts.zip.z02'
+          path: 'ipa_out/**/*_parts.z02'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -396,7 +396,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol03
-          path: 'ipa_out/**/*_parts.zip.z03'
+          path: 'ipa_out/**/*_parts.z03'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -404,7 +404,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol04
-          path: 'ipa_out/**/*_parts.zip.z04'
+          path: 'ipa_out/**/*_parts.z04'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -412,7 +412,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol05
-          path: 'ipa_out/**/*_parts.zip.z05'
+          path: 'ipa_out/**/*_parts.z05'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -420,7 +420,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol06
-          path: 'ipa_out/**/*_parts.zip.z06'
+          path: 'ipa_out/**/*_parts.z06'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -428,7 +428,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol07
-          path: 'ipa_out/**/*_parts.zip.z07'
+          path: 'ipa_out/**/*_parts.z07'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -436,7 +436,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol08
-          path: 'ipa_out/**/*_parts.zip.z08'
+          path: 'ipa_out/**/*_parts.z08'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -444,7 +444,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol09
-          path: 'ipa_out/**/*_parts.zip.z09'
+          path: 'ipa_out/**/*_parts.z09'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -459,12 +459,27 @@ jobs:
       - name: Verificar que hay salida
         run: |
           set -euo pipefail
-          COUNT=$(ls -1 "$GITHUB_WORKSPACE/ipa_out/$GAME" 2>/dev/null | wc -l | tr -d ' ')
+          DIR="$GITHUB_WORKSPACE/ipa_out/$GAME"
+          COUNT=$(ls -1 "$DIR" 2>/dev/null | wc -l | tr -d ' ')
           if [ "$COUNT" -eq 0 ]; then
             echo "::error::No se subió ningún artefacto"
             exit 1
           fi
-          echo "[✔] $COUNT archivo(s) subidos como artefacto(s)"
+          # Cada archivo debe estar cubierto por un patrón de subida
+          # (*.ipa, *_parts.zip o *_parts.zNN); si no, algún volumen se
+          # quedaría sin subir (fue el caso del primer intento de BotW).
+          cd "$GITHUB_WORKSPACE/ipa_out"
+          for f in $(find . -type f | sed 's|^\./||'); do
+            case "$f" in
+              *.ipa|*_parts.zip|*_parts.z[0-9][0-9]) ;;
+              *)
+                echo "::error::El archivo '$f' no está cubierto por ningún patrón de subida de artefactos"
+                exit 1
+                ;;
+            esac
+          done
+          echo "[✔] $COUNT archivo(s), todos cubiertos por artefactos:"
+          ls -la "$DIR"
 
       # -------- 9. Limpieza defensiva --------
       # Borrar keys/juego/IPA del runner por si un fork del workflow

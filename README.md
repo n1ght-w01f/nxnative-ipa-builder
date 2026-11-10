@@ -121,18 +121,34 @@ Los juegos de **Switch 2** se compilan desde un único contenedor **`.nup`**
 
 ---
 
-## 🧩 ¿Y si el artefacto viene dividido en varios `.zip`?
+## 🧩 ¿Y si el artefacto viene dividido en varios `.part`?
 
 Las IPA de hasta **6 GiB se suben como UN solo artefacto** (`<game>-ipa`,
-límite probado empíricamente). Las más grandes se trocean en volúmenes ZIP
-de **4500 MB** y se sube **un artefacto por volumen** (`<game>-vol01`,
-`<game>-vol02`, ..., el último es el `.zip` que cierra el archivo). Ejemplo
-con `botw` (IPA de 14,75 GB): 4 volúmenes → `botw-vol01`, `botw-vol02`,
-`botw-vol03` y `botw-vol10`.
+límite probado empíricamente). Las más grandes se trocean en **trozos
+binarios de 4500 MB** (`.part`) y se sube **un artefacto por trozo**
+(`<game>-vol01`, `<game>-vol02`, ...). Ejemplo: `botw` (14,75 GB) → 4 trozos;
+`dkb` (9,5 GB) → 3 trozos.
+
+> ℹ️ Los `.part` **no son archivos comprimidos**: son trozos brutos de la
+> IPA. No los abras con WinRAR/7-Zip — **únelos con `copy /b`** en orden
+> (vol01, vol02, ..., el más alto el último) y el resultado **ES directamente
+> la `.ipa`**, sin descomprimir nada.
+
+**Windows (PowerShell):**
+```powershell
+$parts = Get-ChildItem .\*-vol*.part | Sort-Object Name
+cmd /c "copy /b $($parts.Name -join '+') MiJuego.ipa"   # ejecuta dentro de la carpeta
+```
+*(los nombres son relativos y sin espacios → sin problema de comillas)*
+
+**macOS / Linux:**
+```bash
+cat *-vol*.part > MiJuego.ipa    # orden léxico = orden correcto
+```
 
 > ℹ️ Los pasos `volNN` que digan *«no files found»* son huecos del diseño:
-> ese juego no generó tantos volúmenes. En el *Summary* del run hay una
-> tabla con la lista exacta de artefactos a descargar.
+> ese juego no generó tantos trozos. En el *Summary* del run hay una tabla
+> con la lista exacta de artefactos a descargar.
 
 1. Descarga **todos** los artefactos (pestaña *Artifacts* del run, o
    `gh run download <run-id>` — los baja todos de una) en **la misma carpeta**.

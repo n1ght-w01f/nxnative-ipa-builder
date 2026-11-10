@@ -225,6 +225,18 @@ jobs:
 
           fetch() {
             URL="$1"
+            # Carpeta remota (termina en /) → espejo recursivo con wget
+            case "$URL" in
+              */)
+                DEPTH=$(printf '%s' "$URL" | sed -E 's#https?://[^/]+/?##' | awk 'BEGIN{RS="/"} NF{n++} END{print n+0}')
+                echo "[*] URL de carpeta → espejo recursivo (cut-dirs=$DEPTH) ..."
+                wget -q --show-progress -r -np -nH --cut-dirs="$DEPTH" \
+                  -e robots=off -R "index.html*,robots.txt,.listing" \
+                  -P "$GAME_DIR/" "$URL" || \
+                  echo "::warning::wget terminó con avisos; se comprobará el contenido"
+                return
+                ;;
+            esac
             FILE=$(printf '%s' "$URL" | sed -E 's#.*/##' | sed -E 's/\?.*$//')
             # Decodificar %20, %5B, etc. para nombres reales
             FILE=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.unquote(sys.argv[1]))' "$FILE")
@@ -347,15 +359,20 @@ jobs:
             echo "[*] IPA encontrada: $(basename "$IPA") ($GB GB)"
 
             if [ "$SIZE" -gt "$MAX" ]; then
-              echo "[*] Supera 6 GiB → dividiendo en volúmenes ZIP de 4500 MB ..."
+              echo "[*] Supera 6 GiB → dividiendo en trozos binarios de 4500 MB ..."
               cd "$OUT"
               IPA_NAME="$(basename "$IPA")"
-              BASE="${IPA_NAME%.ipa}"
               mv "$IPA" "$IPA_NAME"
-              zip -q -r "$IPA_NAME.zip" "$IPA_NAME"
-              zip -q -s 4500m "$IPA_NAME.zip" --out "${BASE}_parts.zip"
-              rm "$IPA_NAME" "$IPA_NAME.zip"
-              echo "[✔] Partes generadas: $(ls "${BASE}_parts".zip* | tr '\n' ' ')"
+              # Trozos binarios: al unirlos con copy /b se recupera la
+              # .ipa directamente (sin zip intermedio → mitad de disco)
+              split -b 4500m "$IPA_NAME" "${IPA_NAME}."
+              rm "$IPA_NAME"
+              n=0
+              for CH in $(ls "${IPA_NAME}."* | sort); do
+                n=$((n+1))
+                mv "$CH" "${GAME}-vol$(printf '%02d' $n).part"
+              done
+              echo "[✔] Trozos generados: $(ls *.part | tr '\n' ' ')"
             else
               mv "$IPA" "$OUT/$(basename "$IPA")"
               echo "[✔] IPA movida al stage de artefactos"
@@ -380,7 +397,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol01
-          path: 'ipa_out/**/*_parts.z01'
+          path: 'ipa_out/**/*-vol01.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -388,7 +405,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol02
-          path: 'ipa_out/**/*_parts.z02'
+          path: 'ipa_out/**/*-vol02.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -396,7 +413,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol03
-          path: 'ipa_out/**/*_parts.z03'
+          path: 'ipa_out/**/*-vol03.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -404,7 +421,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol04
-          path: 'ipa_out/**/*_parts.z04'
+          path: 'ipa_out/**/*-vol04.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -412,7 +429,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol05
-          path: 'ipa_out/**/*_parts.z05'
+          path: 'ipa_out/**/*-vol05.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -420,7 +437,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol06
-          path: 'ipa_out/**/*_parts.z06'
+          path: 'ipa_out/**/*-vol06.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -428,7 +445,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol07
-          path: 'ipa_out/**/*_parts.z07'
+          path: 'ipa_out/**/*-vol07.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -436,7 +453,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol08
-          path: 'ipa_out/**/*_parts.z08'
+          path: 'ipa_out/**/*-vol08.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -444,15 +461,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol09
-          path: 'ipa_out/**/*_parts.z09'
+          path: 'ipa_out/**/*-vol09.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
-      - name: "Artefacto: vol10 (volumen final)"
+      - name: "Artefacto: vol10"
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.game_name }}-vol10
-          path: 'ipa_out/**/*_parts.zip'
+          path: 'ipa_out/**/*-vol10.part'
           retention-days: 1
           compression-level: 0
           if-no-files-found: ignore
@@ -466,12 +483,11 @@ jobs:
             exit 1
           fi
           # Cada archivo debe estar cubierto por un patrón de subida
-          # (*.ipa, *_parts.zip o *_parts.zNN); si no, algún volumen se
-          # quedaría sin subir.
+          # (*.ipa o *.part); si no, algún trozo se quedaría sin subir.
           cd "$GITHUB_WORKSPACE/ipa_out"
           for f in $(find . -type f | sed 's|^\./||'); do
             case "$f" in
-              *.ipa|*_parts.zip|*_parts.z[0-9][0-9]) ;;
+              *.ipa|*.part) ;;
               *)
                 echo "::error::El archivo '$f' no está cubierto por ningún patrón de subida de artefactos"
                 exit 1
@@ -487,16 +503,7 @@ jobs:
             for f in $(ls "$DIR"); do
               case "$f" in
                 *.ipa) ART="${GAME}-ipa" ;;
-                *_parts.z01) ART="${GAME}-vol01" ;;
-                *_parts.z02) ART="${GAME}-vol02" ;;
-                *_parts.z03) ART="${GAME}-vol03" ;;
-                *_parts.z04) ART="${GAME}-vol04" ;;
-                *_parts.z05) ART="${GAME}-vol05" ;;
-                *_parts.z06) ART="${GAME}-vol06" ;;
-                *_parts.z07) ART="${GAME}-vol07" ;;
-                *_parts.z08) ART="${GAME}-vol08" ;;
-                *_parts.z09) ART="${GAME}-vol09" ;;
-                *_parts.zip) ART="${GAME}-vol10 (volumen final)" ;;
+                *.part) ART="$(basename "$f" .part)" ;;
                 *) ART="desconocido" ;;
               esac
               echo "| $ART | $f |"

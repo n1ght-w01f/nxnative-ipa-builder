@@ -195,7 +195,7 @@ jobs:
           # Enmascarar las URLs para que no aparezcan en los logs
           echo "::add-mask::$NSP_URL"
           echo "::add-mask::$KEYS_URL"
-          echo "::add-mask::$EXTRA_URLS"
+          if [ -n "$EXTRA_URLS" ]; then echo "::add-mask::$EXTRA_URLS"; fi
 
           # Nombre de juego seguro para rutas y artefactos
           RAW_NAME="${{ inputs.game_name }}"
@@ -245,7 +245,7 @@ jobs:
               *) FILE="download_$(echo "$URL" | cksum | cut -d' ' -f1).nsp" ;;
             esac
             echo "[*] Descargando ($FILE) ..."
-            curl -L --fail --retry 3 --retry-delay 5 --connect-timeout 30 \
+            curl -L --fail --retry 5 --retry-delay 5 --connect-timeout 30 -C - \
               -o "$GAME_DIR/$FILE" "$URL"
             # Un .zip se descomprime dentro de la carpeta del juego
             # (útil para volcar una carpeta base/ + updates/ + dlc/)
